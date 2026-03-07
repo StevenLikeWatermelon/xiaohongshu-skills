@@ -515,6 +515,7 @@ class Page:
         )
 
 
+
 class Browser:
     """Chrome 浏览器 CDP 控制器。"""
 

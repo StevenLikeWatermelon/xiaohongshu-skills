@@ -112,20 +112,29 @@ def cmd_check_login(args: argparse.Namespace) -> None:
             _output({"logged_in": True}, exit_code=0)
         else:
             from chrome_launcher import has_display
-            method = "qrcode" if has_display() else "phone"
-            hint = (
-                "请运行 login（二维码）完成登录"
-                if method == "qrcode"
-                else "请运行 send-code --phone <手机号>（手机验证码）完成登录"
-            )
-            _output({"logged_in": False, "login_method": method, "hint": hint}, exit_code=1)
+            if has_display():
+                _output({
+                    "logged_in": False,
+                    "login_method": "qrcode",
+                    "hint": "请运行 login，Chrome 窗口会弹出二维码，扫码后自动完成登录",
+                }, exit_code=1)
+            else:
+                # 无界面环境：二维码（扫对话窗口中的图片）和手机验证码均可
+                _output({
+                    "logged_in": False,
+                    "login_method": "both",
+                    "hint": (
+                        "方式A: get-qrcode（二维码将显示在对话窗口，扫码即可）；"
+                        "方式B: send-code --phone <手机号>（手机验证码）"
+                    ),
+                }, exit_code=1)
     finally:
         browser.close_page(page)
         browser.close()
 
 
 def cmd_login(args: argparse.Namespace) -> None:
-    """获取登录二维码并等待扫码。"""
+    """获取登录二维码并阻塞等待扫码（最多 120 秒）。"""
     from xhs.login import fetch_qrcode, save_qrcode_to_file, wait_for_login
 
     browser, page = _connect(args)
@@ -133,23 +142,24 @@ def cmd_login(args: argparse.Namespace) -> None:
         src, already = fetch_qrcode(page)
         if already:
             _output({"logged_in": True, "message": "已登录"})
-        else:
-            # 保存二维码到临时文件
-            qrcode_path = save_qrcode_to_file(src)
-            print(
-                json.dumps(
-                    {
-                        "qrcode_path": qrcode_path,
-                        "message": "请扫码登录，二维码已保存到文件",
-                    },
-                    ensure_ascii=False,
-                )
+            return
+
+        qrcode_path, qrcode_data_url = save_qrcode_to_file(src)
+        print(
+            json.dumps(
+                {
+                    "qrcode_path": qrcode_path,
+                    "qrcode_data_url": qrcode_data_url,
+                    "message": "请扫码登录，二维码已保存到文件",
+                },
+                ensure_ascii=False,
             )
-            success = wait_for_login(page, timeout=120)
-            _output(
-                {"logged_in": success, "message": "登录成功" if success else "登录超时"},
-                exit_code=0 if success else 2,
-            )
+        )
+        success = wait_for_login(page, timeout=120)
+        _output(
+            {"logged_in": success, "message": "登录成功" if success else "登录超时"},
+            exit_code=0 if success else 2,
+        )
     finally:
         browser.close_page(page)
         browser.close()
@@ -197,6 +207,35 @@ def cmd_phone_login(args: argparse.Namespace) -> None:
     finally:
         browser.close_page(page)
         browser.close()
+
+
+def cmd_get_qrcode(args: argparse.Namespace) -> None:
+    """获取登录二维码并立即返回（非阻塞）。
+
+    从登录弹窗的二维码 img 元素读取图片（data URL 或网络 URL），
+    保存为本地 PNG 文件后立即退出。Chrome tab 保持打开，QR 会话继续有效。
+    调用方收到 qrcode_path 后用 Read 工具将图片显示在对话窗口，再轮询 check-login。
+    """
+    from xhs.login import fetch_qrcode, save_qrcode_to_file
+
+    browser, page = _connect(args)
+
+    src, already = fetch_qrcode(page)
+    if already:
+        browser.close_page(page)
+        browser.close()
+        _output({"logged_in": True, "message": "已登录"})
+        return
+
+    qrcode_path, qrcode_data_url = save_qrcode_to_file(src)
+
+    # 只断开 CDP 连接，不关闭 tab——QR 会话保持，用户可继续扫码
+    browser.close()
+    _output({
+        "qrcode_path": qrcode_path,
+        "qrcode_data_url": qrcode_data_url,
+        "message": "二维码已生成，请扫码登录。扫码后运行 check-login 确认登录状态。",
+    })
 
 
 def cmd_send_code(args: argparse.Namespace) -> None:
@@ -681,8 +720,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.set_defaults(func=cmd_check_login)
 
     # login
-    sub = subparsers.add_parser("login", help="登录（扫码）")
+    sub = subparsers.add_parser("login", help="登录（扫码，阻塞等待）")
     sub.set_defaults(func=cmd_login)
+
+    # get-qrcode（非阻塞，截图后立即返回）
+    sub = subparsers.add_parser("get-qrcode", help="获取登录二维码截图并立即返回（非阻塞）")
+    sub.set_defaults(func=cmd_get_qrcode)
 
     # phone-login（单命令交互式）
     sub = subparsers.add_parser("phone-login", help="手机号+验证码登录（交互式，适合本地终端）")
