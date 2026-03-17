@@ -258,7 +258,6 @@ def _qrcode_fallback(browser, page, args: argparse.Namespace) -> None:
     result: dict = {
         "logged_in": False,
         "login_method": "qrcode",
-        "qrcode_path": qrcode_path,
         "qrcode_image_url": image_url,
         "message": (
             "验证码发送受限，已切换为二维码登录，请扫码。"
@@ -302,7 +301,6 @@ def cmd_check_login(args: argparse.Namespace) -> None:
 
         result: dict = {
             "logged_in": False,
-            "qrcode_path": qrcode_path,
             "qrcode_image_url": image_url,
         }
         if has_display():
@@ -327,7 +325,7 @@ def cmd_check_login(args: argparse.Namespace) -> None:
 
 def cmd_login(args: argparse.Namespace) -> None:
     """获取登录二维码并阻塞等待扫码（最多 120 秒）。"""
-    from xhs.login import fetch_qrcode, save_qrcode_to_file, wait_for_login
+    from xhs.login import fetch_qrcode, make_qrcode_url, save_qrcode_to_file, wait_for_login
 
     browser, page = _connect(args)
     try:
@@ -337,9 +335,10 @@ def cmd_login(args: argparse.Namespace) -> None:
             return
 
         qrcode_path = save_qrcode_to_file(png_bytes)
+        image_url, login_url = make_qrcode_url(png_bytes)
         print(
             json.dumps(
-                {"qrcode_path": qrcode_path, "message": "请扫码登录"},
+                {"image_url": image_url, "message": "请扫码登录"},
                 ensure_ascii=False,
             )
         )
@@ -457,7 +456,6 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
     # 只断开 CDP 连接，不关闭 tab——QR 会话保持
     browser.close()
     result: dict = {
-        "qrcode_path": qrcode_path,
         "qrcode_image_url": image_url,
         "message": "二维码已生成，请扫码登录。"
         "扫码后运行 wait-login 等待登录结果。",
