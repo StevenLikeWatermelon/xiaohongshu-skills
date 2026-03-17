@@ -3,16 +3,7 @@
 # ========== 登录 ==========
 LOGIN_STATUS = ".main-container .user .link-wrapper .channel"
 QRCODE_IMG = ".qrcode-img"
-
-# ========== 手机号登录 ==========
 LOGIN_CONTAINER = ".login-container"
-PHONE_INPUT = "label.phone input"
-GET_CODE_BUTTON = "span.code-button"
-CODE_INPUT = "label.auth-code input"
-PHONE_LOGIN_SUBMIT = ".input-container button.submit"
-AGREE_CHECKBOX = ".agree-icon .icon-wrapper"
-AGREE_CHECKBOX_CHECKED = ".agree-icon .icon-wrapper.agreed"
-LOGIN_ERR_MSG = ".err-msg"
 
 # ========== 首页 / 搜索 ==========
 FILTER_BUTTON = "div.filter"

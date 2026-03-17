@@ -71,40 +71,6 @@ class TestConnectHeadless:
         mock_ensure.assert_called_once_with(port=9222, headless=True)
 
 
-# ---------- Bug 1：send-code RateLimitError 重启 ----------
-
-class TestSendCodeRateLimit:
-    """触发频率限制时，重启 Chrome 应使用正确的 headless 参数。"""
-
-    def _run_send_code(self, has_display_value: bool):
-        """运行 cmd_send_code 并触发 RateLimitError，返回 restart_chrome 的调用记录。"""
-        from xhs.errors import RateLimitError
-
-        mock_page = MagicMock()
-        mock_browser_inst = MagicMock()
-        mock_browser_inst.new_page.return_value = mock_page
-
-        with (
-            patch("chrome_launcher.has_display", return_value=has_display_value),
-            patch("chrome_launcher.ensure_chrome", return_value=True),
-            patch("chrome_launcher.restart_chrome") as mock_restart,
-            patch("xhs.cdp.Browser", return_value=mock_browser_inst),
-            patch("xhs.login.send_phone_code", side_effect=[RateLimitError(), True]),
-            pytest.raises(SystemExit),  # _output 会 sys.exit
-        ):
-            import cli
-            cli.cmd_send_code(_make_args(phone="13800138000"))
-
-        return mock_restart
-
-    def test_rate_limit_restart_headless_when_no_display(self):
-        mock_restart = self._run_send_code(has_display_value=False)
-        mock_restart.assert_called_once_with(port=9222, headless=True)
-
-    def test_rate_limit_restart_headed_when_has_display(self):
-        mock_restart = self._run_send_code(has_display_value=True)
-        mock_restart.assert_called_once_with(port=9222, headless=False)
-
 
 # ---------- Bug 3：_headless_fallback ----------
 
@@ -128,7 +94,7 @@ class TestHeadlessFallback:
         assert exc_info.value.code == 1
         output = json.loads(buf.getvalue())
         assert output["action"] == "login_required"
-        assert "send-code" in output["message"]
+        assert "get-qrcode" in output["message"]
 
     def test_has_display_restarts_headed(self):
         with (

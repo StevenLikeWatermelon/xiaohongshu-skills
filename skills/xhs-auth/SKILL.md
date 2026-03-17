@@ -36,8 +36,6 @@ metadata:
 | `check-login` | 检查当前登录状态 |
 | `get-qrcode` | 获取二维码图片（非阻塞） |
 | `wait-login` | 等待扫码完成（阻塞） |
-| `send-code --phone` | 发送手机验证码 |
-| `verify-code --code` | 提交验证码完成登录 |
 | `delete-cookies` | 退出登录并清除 cookies |
 | `add-account --name` | 添加命名账号（自动分配端口） |
 | `list-accounts` | 列出所有命名账号及端口 |
@@ -70,7 +68,7 @@ python scripts/cli.py list-accounts
 按优先级判断用户意图：
 
 1. 用户要求"检查登录 / 是否登录 / 登录状态"：执行登录状态检查。
-2. 用户要求"登录 / 扫码登录 / 手机登录 / 打开登录页"：执行登录流程。
+2. 用户要求"登录 / 扫码登录 / 打开登录页"：执行登录流程。
 3. 用户要求"切换账号 / 换一个账号 / 退出登录 / 清除登录"：执行 `delete-cookies`（内部自动先 UI 退出登录，再清除本地 cookies）。
 
 ## 必做约束
@@ -89,12 +87,9 @@ python scripts/cli.py check-login
 
 输出解读：
 - `"logged_in": true` → 已登录，可执行后续操作。
-- `"logged_in": false` + `"login_method": "qrcode"` → 有界面环境，走方式 A（二维码）。输出自动包含 `qrcode_image_url`。
-- `"logged_in": false` + `"login_method": "both"` → 无界面服务器，输出自动包含二维码，**询问用户选方式 A（二维码）或方式 B（手机验证码）**。
+- `"logged_in": false` → 未登录，输出自动包含 `qrcode_image_url`，直接展示二维码扫码登录。
 
-### 第二步：根据输出选择登录方式
-
-#### 方式 A：二维码登录（所有平台通用）
+### 第二步：二维码登录
 
 > `check-login` 未登录时会自动返回二维码（`qrcode_image_url`），无需单独调 `get-qrcode`。
 
@@ -122,36 +117,6 @@ python scripts/cli.py wait-login
 - 输出 `{"logged_in": true}` 则完成；超时则提示用户重新运行 `get-qrcode` 刷新二维码。
 
 > **二维码过期刷新**：如需单独刷新二维码（如超时后），可运行 `get-qrcode`，它仍作为独立命令保留。
-
-#### 方式 B：手机验证码登录（无界面服务器，分两步）
-
-**⚠️ 强制要求：必须先向用户确认手机号，即使上下文中已有手机号也不得跳过。**
-- 用户可能要登录不同账号，手机号可能已变更。
-- **禁止从历史对话、记忆或上下文中自动填入手机号。**
-- **每次登录都必须明确向用户询问并得到确认后才能执行 `send-code`。**
-
-**第一步** — 向用户确认手机号，然后发送验证码：
-
-> **必须先问用户**："请提供您要登录的手机号（不含国家码，如 13800138000）"。
-> 收到用户明确回复手机号后，才能执行以下命令。**不得跳过此步。**
-
-```bash
-python scripts/cli.py send-code --phone <用户确认的手机号>
-```
-- 自动填写手机号、勾选用户协议、点击"获取验证码"。
-- Chrome 页面保持打开，等待下一步。
-- 正常输出：`{"status": "code_sent", "message": "..."}`
-- **频率限制**：自动切换为二维码登录，输出含 `qrcode_image_url`。告知用户"验证码发送受限，已切换为二维码登录"，按方式 A 的展示规范展示二维码，然后运行 `wait-login`。
-
-**第二步** — 向用户询问验证码，然后提交登录：
-
-> 告知用户验证码已发送，询问："请输入您收到的 6 位短信验证码"，获得回复后再执行以下命令。
-
-```bash
-python scripts/cli.py verify-code --code <用户提供的6位验证码>
-```
-- 自动填写验证码、点击登录。
-- 输出：`{"logged_in": true, "message": "登录成功"}`
 
 ### 清除 Cookies（切换账号/退出登录）
 
@@ -200,7 +165,5 @@ python scripts/cli.py remove-account --name personal     # 删除账号
 ## 失败处理
 
 - **Chrome 未找到**：提示用户安装 Google Chrome 或设置 `CHROME_BIN` 环境变量。
-- **登录弹窗未出现**：等待 15 秒超时，重试 `send-code`。
-- **验证码错误**：输出包含 `"logged_in": false`，重新运行 `verify-code --code <新验证码>`。
 - **二维码超时**：重新执行 `get-qrcode` 获取新二维码，再运行 `wait-login`。
 - **远程 CDP 连接失败**：检查 Chrome 是否已开启 `--remote-debugging-port`。

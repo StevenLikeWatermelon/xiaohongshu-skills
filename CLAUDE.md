@@ -56,7 +56,6 @@ python scripts/publish_pipeline.py --title-file t.txt --content-file c.txt --ima
 |--|--|--|
 | `check-login` | check_login_status | 认证 |
 | `login` | get_login_qrcode | 认证 |
-| `phone-login` | — | 认证 |
 | `delete-cookies` | delete_cookies | 认证 |
 | `list-feeds` | list_feeds | 浏览 |
 | `search-feeds` | search_feeds | 浏览 |

@@ -12,20 +12,12 @@ _QR_DIR = os.path.join(tempfile.gettempdir(), "xhs")
 _QR_FILE = os.path.join(_QR_DIR, "login_qrcode.png")
 
 from .cdp import Page
-from .errors import RateLimitError
 from .human import sleep_random
 from .selectors import (
-    AGREE_CHECKBOX,
-    AGREE_CHECKBOX_CHECKED,
-    CODE_INPUT,
-    GET_CODE_BUTTON,
     LOGIN_CONTAINER,
-    LOGIN_ERR_MSG,
     LOGIN_STATUS,
     LOGOUT_MENU_ITEM,
     LOGOUT_MORE_BUTTON,
-    PHONE_INPUT,
-    PHONE_LOGIN_SUBMIT,
     QRCODE_IMG,
     USER_NICKNAME,
     USER_PROFILE_NAV_LINK,
@@ -33,20 +25,6 @@ from .selectors import (
 from .urls import EXPLORE_URL
 
 logger = logging.getLogger(__name__)
-
-
-def _wait_for_countdown(page: Page, timeout: float = 5.0) -> None:
-    """等待"获取验证码"按钮出现倒计时数字，确认验证码已发送。
-
-    轮询按钮文字直到包含数字（如 "60s"），超时则抛出 RateLimitError。
-    """
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        btn_text = page.get_element_text(GET_CODE_BUTTON) or ""
-        if any(ch.isdigit() for ch in btn_text):
-            return
-        time.sleep(0.3)
-    raise RateLimitError()
 
 
 
@@ -229,103 +207,6 @@ def save_qrcode_to_file(png_bytes: bytes) -> str:
         f.write(png_bytes)
     logger.info("二维码已保存: %s", _QR_FILE)
     return _QR_FILE
-
-
-def send_phone_code(page: Page, phone: str) -> bool:
-    """填写手机号并发送短信验证码。
-
-    适用于无界面服务器场景，全程通过 CDP 操作，无需扫码。
-
-    Args:
-        page: CDP 页面对象。
-        phone: 手机号（不含国家码，如 13800138000）。
-
-    Returns:
-        True 验证码已发送，False 已登录（无需再登录）。
-
-    Raises:
-        RuntimeError: 找不到登录表单或手机号输入框。
-    """
-    # 如果当前页面已在 explore，跳过重复导航
-    current_url = page.evaluate("location.href") or ""
-    if "explore" not in current_url:
-        page.navigate(EXPLORE_URL)
-        page.wait_for_load()
-
-    # 直接等待登录容器出现（合并了 _wait_for_auth_ui 的逻辑，避免重复等待）
-    try:
-        page.wait_for_element(LOGIN_CONTAINER, timeout=10.0)
-    except Exception as exc:
-        # 可能已登录（没有登录容器），检查登录状态
-        if page.has_element(LOGIN_STATUS):
-            return False
-        raise RuntimeError("找不到登录表单") from exc
-
-    if page.has_element(LOGIN_STATUS):
-        return False
-
-    sleep_random(200, 400)
-
-    # 点击手机号输入框并逐字输入
-    page.click_element(PHONE_INPUT)
-    sleep_random(200, 400)
-    page.type_text(phone, delay_ms=80)
-    sleep_random(200, 400)
-
-    # 先勾选用户协议，再点获取验证码
-    if not page.has_element(AGREE_CHECKBOX_CHECKED):
-        page.click_element(AGREE_CHECKBOX)
-        sleep_random(300, 600)
-
-    # 点击"获取验证码"
-    page.click_element(GET_CODE_BUTTON)
-
-    # 事件驱动：轮询按钮文字直到出现倒计时数字，替代固定 2-2.5s 等待
-    _wait_for_countdown(page)
-
-    logger.info("验证码已发送至 %s", phone[:3] + "****" + phone[-4:])
-    return True
-
-
-def submit_phone_code(page: Page, code: str) -> bool:
-    """填写短信验证码并提交登录。
-
-    Args:
-        page: CDP 页面对象。
-        code: 收到的短信验证码。
-
-    Returns:
-        True 登录成功，False 失败（超时或验证码错误）。
-    """
-    # 点击验证码输入框，先清空再用 CDP 键盘事件逐字输入（isTrusted=true，React 能识别）
-    page.click_element(CODE_INPUT)
-    sleep_random(100, 200)
-    page.evaluate(
-        f"""(() => {{
-            const el = document.querySelector({json.dumps(CODE_INPUT)});
-            if (el && el.value) {{
-                const setter = Object.getOwnPropertyDescriptor(
-                    window.HTMLInputElement.prototype, 'value'
-                ).set;
-                setter.call(el, '');
-                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-            }}
-        }})()"""
-    )
-    page.type_text(code, delay_ms=0)
-    sleep_random(100, 200)
-
-    # 点击登录按钮
-    page.click_element(PHONE_LOGIN_SUBMIT)
-    sleep_random(500, 1000)
-
-    # 检查是否有错误提示
-    err = page.get_element_text(LOGIN_ERR_MSG)
-    if err and err.strip():
-        logger.warning("登录失败: %s", err.strip())
-        return False
-
-    return wait_for_login(page, timeout=30.0)
 
 
 def logout(page: Page) -> bool:

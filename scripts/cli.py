@@ -224,47 +224,10 @@ def _headless_fallback(port: int) -> None:
                 "success": False,
                 "error": "未登录",
                 "action": "login_required",
-                "message": "无界面环境下请先运行 send-code --phone <手机号> 完成登录",
+                "message": "无界面环境下请运行 get-qrcode 获取二维码后扫码登录",
             },
             exit_code=1,
         )
-
-def _qrcode_fallback(browser, page, args: argparse.Namespace) -> None:
-    """频率限制时刷新页面返回二维码，让 AI 直接展示给用户扫码。"""
-    from xhs.login import (
-        fetch_qrcode,
-        make_qrcode_url,
-        save_qrcode_to_file,
-    )
-    from xhs.urls import EXPLORE_URL
-
-    # 刷新页面使登录弹窗回到默认的二维码 tab
-    page.navigate(EXPLORE_URL)
-    page.wait_for_load()
-
-    png_bytes, _b64_orig, already = fetch_qrcode(page)
-    if already:
-        browser.close()
-        _output({"logged_in": True, "message": "已登录"})
-        return
-
-    qrcode_path = save_qrcode_to_file(png_bytes)
-    image_url, login_url = make_qrcode_url(png_bytes)
-
-
-    _save_login_tab(page.target_id, args.port)
-    _clear_session_tab(args.port)
-    browser.close()
-    result: dict = {
-        "logged_in": False,
-        "login_method": "qrcode",
-        "qrcode_image_url": image_url,
-        "message": (
-            "验证码发送受限，已切换为二维码登录，请扫码。"
-            "扫码后运行 wait-login 等待登录结果。"
-        ),
-    }
-    _output(result, exit_code=1)
 
 
 # ========== 子命令实现 ==========
@@ -297,26 +260,12 @@ def cmd_check_login(args: argparse.Namespace) -> None:
         _clear_session_tab(args.port)
 
 
-        from chrome_launcher import has_display
-
         result: dict = {
             "logged_in": False,
+            "login_method": "qrcode",
             "qrcode_image_url": image_url,
+            "hint": "未登录，二维码已自动生成。扫码后运行 wait-login 等待登录结果",
         }
-        if has_display():
-            result["login_method"] = "qrcode"
-            result["hint"] = (
-                "未登录，二维码已自动生成。"
-                "扫码后运行 wait-login 等待登录结果"
-            )
-        else:
-            result["login_method"] = "both"
-            result["hint"] = (
-                "未登录，二维码已自动生成。"
-                "方式A: 直接扫码 + wait-login；"
-                "方式B: send-code --phone <手机号>"
-                " + verify-code（手机验证码）"
-            )
         _output(result, exit_code=1)
     finally:
         # 只断开 CDP 连接，不关闭 tab——保留登录页面
@@ -353,72 +302,6 @@ def cmd_login(args: argparse.Namespace) -> None:
         browser.close_page(page)
         browser.close()
 
-
-def cmd_phone_login(args: argparse.Namespace) -> None:
-    """手机号+验证码登录（适用于无界面服务器）。"""
-    from xhs.errors import RateLimitError
-    from xhs.login import send_phone_code, submit_phone_code
-
-    browser, page = _connect(args)
-    try:
-        sent = send_phone_code(page, args.phone)
-    except RateLimitError:
-        # 频率限制——直接切换二维码登录
-        logger.info("验证码发送受限，切换为二维码登录")
-        _qrcode_fallback(browser, page, args)
-        return
-
-    try:
-        if not sent:
-            _output({"logged_in": True, "message": "已登录，无需重新登录"})
-            return
-
-        # 输出提示，等待用户在终端输入验证码
-        print(
-            json.dumps(
-                {
-                    "status": "code_sent",
-                    "message": (
-                        f"验证码已发送至 "
-                        f"{args.phone[:3]}****{args.phone[-4:]}"
-                    ),
-                },
-                ensure_ascii=False,
-            ),
-            flush=True,
-        )
-
-        # 从 --code 参数或交互式 stdin 读取验证码
-        if args.code:
-            code = args.code.strip()
-        else:
-            try:
-                code = input("请输入验证码: ").strip()
-            except EOFError:
-                _output(
-                    {"success": False, "error": "未收到验证码输入"},
-                    exit_code=2,
-                )
-                return
-
-        if not code:
-            _output(
-                {"success": False, "error": "验证码不能为空"},
-                exit_code=2,
-            )
-            return
-
-        success = submit_phone_code(page, code)
-        _output(
-            {
-                "logged_in": success,
-                "message": "登录成功" if success else "验证码错误或超时",
-            },
-            exit_code=0 if success else 2,
-        )
-    finally:
-        # 不关闭 tab——与 verify-code 一致，保留页面供重试
-        browser.close()
 
 
 def cmd_get_qrcode(args: argparse.Namespace) -> None:
@@ -486,59 +369,6 @@ def cmd_wait_login(args: argparse.Namespace) -> None:
     finally:
         browser.close()
 
-
-def cmd_send_code(args: argparse.Namespace) -> None:
-    """分步登录第一步：填写手机号并发送验证码，保持页面不关闭。
-
-    频率限制时返回错误信息和建议，由 AI 告知用户选择。
-    """
-    from xhs.errors import RateLimitError
-    from xhs.login import send_phone_code
-
-    browser, page = _connect(args)
-    try:
-        sent = send_phone_code(page, args.phone)
-        if not sent:
-            _output({"logged_in": True, "message": "已登录，无需重新登录"})
-            return
-
-        # 记录 login tab，供 verify-code 精确 reconnect
-        _save_login_tab(page.target_id, args.port)
-        # 清除 session tab 引用——隔离登录表单，防止其他命令复用并关闭/导航该 tab
-        _clear_session_tab(args.port)
-        _output({
-            "status": "code_sent",
-            "message": (
-                f"验证码已发送至 {args.phone[:3]}****{args.phone[-4:]}，"
-                "请运行 verify-code --code <验证码>"
-            ),
-        })
-    except RateLimitError:
-        # 频率限制——直接切换二维码登录
-        logger.info("验证码发送受限，切换为二维码登录")
-        _qrcode_fallback(browser, page, args)
-    else:
-        # 只断开控制连接，不关闭页面——tab 保持打开，verify-code 继续复用
-        browser.close()
-
-
-def cmd_verify_code(args: argparse.Namespace) -> None:
-    """分步登录第二步：在已有页面上填写验证码并提交。"""
-    from xhs.login import submit_phone_code
-
-    browser, page = _connect_saved_tab(args)
-    try:
-        success = submit_phone_code(page, args.code)
-        if success:
-            _clear_login_tab(args.port)
-            _update_account_nickname(args, page)
-        _output(
-            {"logged_in": success, "message": "登录成功" if success else "验证码错误或超时"},
-            exit_code=0 if success else 2,
-        )
-    finally:
-        # 不关闭 tab——成功后供后续命令复用，失败后用户可再次运行 verify-code 重试
-        browser.close()
 
 
 def cmd_delete_cookies(args: argparse.Namespace) -> None:
@@ -1037,22 +867,6 @@ def build_parser() -> argparse.ArgumentParser:
     sub = subparsers.add_parser("wait-login", help="等待扫码登录完成（配合 get-qrcode 使用）")
     sub.add_argument("--timeout", type=float, default=120.0, help="等待超时秒数 (default: 120)")
     sub.set_defaults(func=cmd_wait_login)
-
-    # phone-login（单命令交互式）
-    sub = subparsers.add_parser("phone-login", help="手机号+验证码登录（交互式，适合本地终端）")
-    sub.add_argument("--phone", required=True, help="手机号（不含国家码，如 13800138000）")
-    sub.add_argument("--code", default="", help="短信验证码（省略则交互式输入）")
-    sub.set_defaults(func=cmd_phone_login)
-
-    # send-code（分步登录第一步）
-    sub = subparsers.add_parser("send-code", help="分步登录第一步：发送手机验证码，保持页面不关闭")
-    sub.add_argument("--phone", required=True, help="手机号（不含国家码）")
-    sub.set_defaults(func=cmd_send_code)
-
-    # verify-code（分步登录第二步）
-    sub = subparsers.add_parser("verify-code", help="分步登录第二步：填写验证码并完成登录")
-    sub.add_argument("--code", required=True, help="收到的短信验证码")
-    sub.set_defaults(func=cmd_verify_code)
 
     # delete-cookies
     sub = subparsers.add_parser("delete-cookies", help="删除 cookies")
