@@ -81,28 +81,6 @@ def _output(data: dict, exit_code: int = 0) -> None:
     sys.exit(exit_code)
 
 
-def _open_file_if_display(path: str) -> None:
-    """有桌面环境时用系统默认程序打开文件，无界面环境静默跳过。"""
-    from chrome_launcher import has_display
-
-    if not has_display():
-        return
-
-    import platform
-    import subprocess
-
-    try:
-        system = platform.system()
-        if system == "Windows":
-            os.startfile(path)
-        elif system == "Darwin":
-            subprocess.Popen(["open", path])
-        else:
-            subprocess.Popen(["xdg-open", path])
-    except Exception:
-        logger.debug("无法自动打开文件: %s", path)
-
-
 def _update_account_nickname(args: argparse.Namespace, page) -> None:
     """登录成功后，将平台昵称写入账号描述（best-effort，失败不影响登录结果）。"""
     if not getattr(args, "account", ""):
@@ -273,7 +251,6 @@ def _qrcode_fallback(browser, page, args: argparse.Namespace) -> None:
     qrcode_path = save_qrcode_to_file(png_bytes)
     image_url, login_url = make_qrcode_url(png_bytes)
 
-    _open_file_if_display(qrcode_path)
 
     _save_login_tab(page.target_id, args.port)
     _clear_session_tab(args.port)
@@ -320,7 +297,6 @@ def cmd_check_login(args: argparse.Namespace) -> None:
         _save_login_tab(page.target_id, args.port)
         _clear_session_tab(args.port)
 
-        _open_file_if_display(qrcode_path)
 
         from chrome_launcher import has_display
 
@@ -361,7 +337,6 @@ def cmd_login(args: argparse.Namespace) -> None:
             return
 
         qrcode_path = save_qrcode_to_file(png_bytes)
-        _open_file_if_display(qrcode_path)
         print(
             json.dumps(
                 {"qrcode_path": qrcode_path, "message": "请扫码登录"},
@@ -473,7 +448,6 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
     qrcode_path = save_qrcode_to_file(png_bytes)
     image_url, login_url = make_qrcode_url(png_bytes)
 
-    _open_file_if_display(qrcode_path)
 
     # 记录 login tab，供 wait-login 精确 reconnect
     _save_login_tab(page.target_id, args.port)
