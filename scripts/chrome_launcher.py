@@ -144,6 +144,10 @@ def launch_chrome(
         *STEALTH_ARGS,
     ]
 
+    # Linux 环境（含 Docker/CI）下 Chrome 需要禁用沙箱才能正常启动
+    if platform.system() == "Linux":
+        args += ["--no-sandbox", "--disable-setuid-sandbox"]
+
     if headless:
         args.append("--headless=new")
 
