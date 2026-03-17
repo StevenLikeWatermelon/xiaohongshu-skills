@@ -288,8 +288,6 @@ def _qrcode_fallback(browser, page, args: argparse.Namespace) -> None:
             "扫码后运行 wait-login 等待登录结果。"
         ),
     }
-    if login_url:
-        result["qr_login_url"] = login_url
     _output(result, exit_code=1)
 
 
@@ -331,8 +329,6 @@ def cmd_check_login(args: argparse.Namespace) -> None:
             "qrcode_path": qrcode_path,
             "qrcode_image_url": image_url,
         }
-        if login_url:
-            result["qr_login_url"] = login_url
         if has_display():
             result["login_method"] = "qrcode"
             result["hint"] = (
@@ -492,8 +488,6 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
         "message": "二维码已生成，请扫码登录。"
         "扫码后运行 wait-login 等待登录结果。",
     }
-    if login_url:
-        result["qr_login_url"] = login_url
     _output(result)
 
 
