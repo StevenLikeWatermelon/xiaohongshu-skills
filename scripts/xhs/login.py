@@ -193,21 +193,6 @@ def make_qrcode_url(
     return "data:image/png;base64," + b64, None
 
 
-def save_qrcode_to_file(png_bytes: bytes) -> str:
-    """将二维码 PNG 字节保存到临时文件，返回文件路径。
-
-    Args:
-        png_bytes: CDP 截图返回的 PNG 字节。
-
-    Returns:
-        file_path: 保存的 PNG 文件绝对路径。
-    """
-    os.makedirs(_QR_DIR, exist_ok=True)
-    with open(_QR_FILE, "wb") as f:
-        f.write(png_bytes)
-    logger.info("二维码已保存: %s", _QR_FILE)
-    return _QR_FILE
-
 
 def logout(page: Page) -> bool:
     """通过页面 UI 退出登录（点击"更多"→"退出登录"）。

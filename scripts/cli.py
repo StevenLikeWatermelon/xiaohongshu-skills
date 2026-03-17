@@ -241,8 +241,7 @@ def cmd_check_login(args: argparse.Namespace) -> None:
     """
     from xhs.login import (
         fetch_qrcode,
-        make_qrcode_url,
-        save_qrcode_to_file,
+        make_qrcode_url
     )
 
     browser, page = _connect(args)
@@ -252,7 +251,6 @@ def cmd_check_login(args: argparse.Namespace) -> None:
             _output({"logged_in": True}, exit_code=0)
             return
 
-        qrcode_path = save_qrcode_to_file(png_bytes)
         image_url, login_url = make_qrcode_url(png_bytes)
 
         # 记录 login tab + 清除 session tab
@@ -274,7 +272,7 @@ def cmd_check_login(args: argparse.Namespace) -> None:
 
 def cmd_login(args: argparse.Namespace) -> None:
     """获取登录二维码并阻塞等待扫码（最多 120 秒）。"""
-    from xhs.login import fetch_qrcode, make_qrcode_url, save_qrcode_to_file, wait_for_login
+    from xhs.login import fetch_qrcode, make_qrcode_url, wait_for_login
 
     browser, page = _connect(args)
     try:
@@ -283,7 +281,6 @@ def cmd_login(args: argparse.Namespace) -> None:
             _output({"logged_in": True, "message": "已登录"})
             return
 
-        qrcode_path = save_qrcode_to_file(png_bytes)
         image_url, login_url = make_qrcode_url(png_bytes)
         print(
             json.dumps(
@@ -314,8 +311,7 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
     """
     from xhs.login import (
         fetch_qrcode,
-        make_qrcode_url,
-        save_qrcode_to_file,
+        make_qrcode_url
     )
 
     browser, page = _connect(args)
@@ -327,7 +323,6 @@ def cmd_get_qrcode(args: argparse.Namespace) -> None:
         _output({"logged_in": True, "message": "已登录"})
         return
 
-    qrcode_path = save_qrcode_to_file(png_bytes)
     image_url, login_url = make_qrcode_url(png_bytes)
 
 
